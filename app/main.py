@@ -409,7 +409,7 @@ with tab7:
         "MRT distances computed via OneMap API geocoding (9,714 unique block addresses). "
         "Address Lookup tab geocodes queries live via OneMap API."
     )
-    st.write("**Baseline:** Linear Regression RMSE $87,775 | **Final model:** XGBoost RMSE $51,616 | **R²:** 0.94")
+    st.write("**Baseline:** Linear Regression RMSE $87,775 | **Final model:** XGBoost RMSE $38,295 | **R²:** 0.94")
     st.write(
         "**Known limitation:** No Tengah transactions exist (flats still under MOP). "
         "Predictions there are unreliable extrapolations."
