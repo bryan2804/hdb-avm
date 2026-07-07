@@ -1,8 +1,8 @@
 # HDB Automated Valuation Model (AVM)
 
-A simplified Automated Valuation Model trained on 232,000 HDB resale transactions, deployed as an interactive Streamlit app. Modelled on the collateral validation tools used by bank home loan teams to sanity-check property valuations before mortgage approval.
+An Automated Valuation Model trained on 232,000+ HDB resale transactions, served by a FastAPI backend with a React frontend. Modelled on the collateral validation tools used by bank home loan teams to sanity-check property valuations before mortgage approval.
 
-**[Live Demo →](https://hdb-avm-aj2yyyvwanht7ghcwpv8gs.streamlit.app/)**
+**[Live demo (Streamlit) →](https://hdb-avm-aj2yyyvwanht7ghcwpv8gs.streamlit.app/)** · FastAPI + React deployment in progress
 
 ---
 
@@ -10,97 +10,122 @@ A simplified Automated Valuation Model trained on 232,000 HDB resale transaction
 
 When a bank approves a mortgage, it needs to know the flat is worth what the buyer is paying. Manual valuations are slow and expensive. Automated Valuation Models run instantly at scale — but their error rate directly determines the bank's collateral mispricing exposure.
 
-A model with $51,616 RMSE on a $630,000 flat means the bank could be approving loans against collateral that is 8.2% overvalued. This project quantifies that exposure and makes it interactive.
+This model's $38,295 RMSE on a ~$630,000 flat means roughly 6% mispricing exposure on a typical loan. The API quantifies that exposure per valuation — at town-level granularity, because a Queenstown flat (±$62,507) is a very different risk from a Choa Chu Kang flat (±$25,850).
 
 ---
 
-## Features
+## Architecture
 
-**Price Estimator** — Input town, flat type, storey, floor area, remaining lease, and MRT distance. Returns predicted price with a town-specific confidence band and collateral mispricing exposure percentage.
+```mermaid
+flowchart LR
+    DG[data.gov.sg\n232K transactions] --> FP
+    OM[OneMap API\nblock geocoding] --> FP
+    subgraph shared [hdb_avm package — single source of truth]
+        FP[features pipeline] --> TR[training]
+        FP --> ENC[FeatureEncoder]
+    end
+    TR --> ART[(artifacts:\nmodel · feature_columns\nmetrics · town_centroids)]
+    ART --> API[FastAPI service]
+    ENC --> API
+    API --> WEB[React frontend]
+    ART --> ST[Streamlit app - legacy]
+    CI[GitHub Actions\nmonthly retrain] -.->|test-gated commit| ART
+```
 
-**SHAP Explainability** — Waterfall chart showing which features drove the prediction up or down, and by how much. Floor area, remaining lease, and MRT distance are consistently the top three drivers.
+The design constraint that shaped everything: **training and serving import the same feature code** (`hdb_avm.features`), so what the model sees in production is provably what it saw in training. Parity is enforced by tests, not convention.
 
-**Scenario Comparison** — Side-by-side comparison of two flats. Shows price per sqm and flags which offers better collateral value for a lender.
+**Artifact contract.** Training writes four artifacts: the model, the feature column order, computed evaluation metrics (including per-town RMSE on the held-out window), and town centroids. Both frontends read these artifacts — no metric or category list is hardcoded anywhere downstream. A monthly GitHub Actions run refreshes the data, retrains, and only commits new artifacts if the full test suite passes against them.
 
-**Price Trends** — Historical median price by quarter for any town and flat type combination, from Q1 2017 to Q2 2026.
+---
 
-**Mortgage Exposure Calculator** — Input loan amount and LTV ratio. Outputs worst-case effective LTV if the model overvalues by one RMSE, with risk flagging against 80% and 90% LTV thresholds.
+## API
 
-**Model Performance** — Town-by-town RMSE breakdown. Shows where the model is reliable (Sembawang ±$27,674) and where it isn't (Ang Mo Kio ±$101,908), with plain-English explanation of why.
+`POST /api/v1/valuations` accepts three location precisions:
+
+| Input | Resolution |
+|---|---|
+| `address` | Geocoded live via OneMap → block-level coordinates |
+| `latitude` + `longitude` | Used directly |
+| neither | Town centroid (computed at training time) |
+
+MRT distance is computed from the resolved coordinates (haversine, 160+ stations) unless supplied. The response includes the point estimate, a town-level confidence band, lender mispricing exposure, and an exact TreeSHAP breakdown of what drove the price:
+
+```json
+{
+  "point_estimate": 493450,
+  "band_low": 430943, "band_high": 555957,
+  "rmse": 62507, "rmse_scope": "town",
+  "mispricing_exposure_pct": 12.7,
+  "resolved_location": { "coordinate_source": "town_centroid", "nearest_mrt": "Queenstown", ... },
+  "explanation": { "baseline": 517253, "contributions": [ ... ] }
+}
+```
+
+Also: `GET /api/v1/metadata` (valid categories + model summary), `GET /api/v1/metrics` (full evaluation artifact), `GET /api/v1/trends` (quarterly medians), `GET /health`. Interactive docs at `/docs`.
 
 ---
 
 ## Model
 
-| Model | RMSE | MAE | R² |
-|---|---|---|---|
-| Linear Regression (baseline) | $87,775 | $61,591 | 0.826 |
-| XGBoost | $51,616 | $34,825 | 0.940 |
+| Model | RMSE | R² |
+|---|---|---|
+| Linear Regression (baseline) | $87,775 | — |
+| XGBoost | **$38,295** | **0.967** |
 
-XGBoost reduces error by $36,159 over the baseline. The app uses XGBoost.
+**Training split:** time-ordered, most recent 10% of transactions held out. A random split would leak future prices into training and overstate real-world accuracy.
 
-**Training split:** Time-based. Most recent 12 months held out as test set. A random split would let the model see future transactions during training, overstating real-world accuracy.
+**Features (41):** floor area, storey midpoint, remaining lease (parsed from strings like "61 years 04 months"), transaction year/month, block-level latitude/longitude (9,714 blocks geocoded via OneMap), distance to nearest MRT, town and flat type one-hots.
 
-**Key features:**
-- Floor area (sqm)
-- Storey midpoint
-- Remaining lease (years) — parsed from strings like "61 years 04 months"
-- Town and flat type (one-hot encoded)
-- Distance to nearest MRT station (km) — geocoded via OneMap API, haversine distance
+**Explainability:** SHAP values come from XGBoost's native `pred_contribs` — mathematically identical to `shap.TreeExplainer` output, without shipping the shap dependency in the serving image (and immune to shap/xgboost version breakage).
 
----
+### Why town RMSE varies
 
-## Why Town RMSE Varies
+The model struggles most in mature, heterogeneous estates — Queenstown (±$62,507), Bishan (±$59,406), Central Area (±$58,720) — where a 1990 ground-floor 3-room and a 2015 high-floor 5-room share a town label but price worlds apart. It performs best in newer, uniform towns like Choa Chu Kang (±$25,850) and Jurong West (±$27,064).
 
-The model struggles most in mature central estates like Central Area (±$84,272) and Bukit Merah (±$78,569). A 1990 ground-floor 3-room flat and a 2015 high-floor 5-room flat sit in the same town category but are priced worlds apart — the model cannot resolve that heterogeneity.
-
-It performs best in newer, more uniform towns like Sembawang (±$27,674) and Bukit Batok (±$28,924), where flat characteristics genuinely predict price.
-
-**Known limitation:** Tengah has zero resale transactions — flats are still under the 5-year Minimum Occupation Period. Predictions there would be unreliable extrapolations and the model explicitly flags this.
+**Known limitation:** Tengah has zero resale transactions (flats still under the Minimum Occupation Period). The API refuses to extrapolate there — unknown towns return a 422, not a guess.
 
 ---
 
-## Stack
+## Engineering notes
 
-- **Data:** data.gov.sg HDB resale flat prices (Jan 2017 – Jun 2026)
-- **Geocoding:** OneMap API — 9,714 unique block addresses geocoded, results cached
-- **Modelling:** scikit-learn (Linear Regression), XGBoost, SHAP
-- **App:** Streamlit, Plotly
-- **Deployment:** Streamlit Community Cloud
+- **No training/serving skew by construction.** One `FeatureEncoder`, driven entirely by the `feature_columns.json` artifact; a parity test suite proves it reproduces the legacy app's encoding byte-for-byte, plus golden predictions pinned to the deployed model generation (auto-skipped after retrains).
+- **Test-gated retraining.** The monthly pipeline retrains, recomputes per-town metrics on the new held-out window, runs the full test suite against the fresh artifacts, and only then commits.
+- **Honest uncertainty.** Confidence bands use town-level RMSE (published only for towns with ≥30 test samples), and every valuation reports the lender's mispricing exposure.
+- 32 tests: unit (parsing, geo, encoding), serving-layer, end-to-end API (OneMap mocked — no network in CI), and legacy-parity.
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 hdb-avm/
-├── app/
-│   └── main.py              # Streamlit app
-├── data/
-│   ├── resale-flat-prices.csv
-│   ├── processed.csv        # Feature-engineered dataset
-│   ├── mrt_station_coords.csv
-│   └── price_trends.csv     # Quarterly medians by town and flat type
-├── models/
-│   ├── xgboost.joblib
-│   ├── linear_regression.joblib
-│   └── feature_columns.json
-├── src/
-│   ├── explore_data.py
-│   ├── features.py          # Feature engineering pipeline
-│   ├── geocode_mrt.py       # MRT station coordinate fetching
-│   ├── mrt_distance.py      # Haversine distance calculation
-│   └── train.py             # Model training and evaluation
-└── requirements.txt
+├── hdb_avm/              # Shared Python package
+│   ├── features/         #   parsing, geo, encoding, training pipeline
+│   ├── ml/               #   model registry + valuation service
+│   ├── training/         #   train + compute metrics artifacts
+│   ├── api/              #   FastAPI app, routers, schemas, OneMap client
+│   └── config.py         #   env-overridable settings (HDB_*)
+├── web/                  # React frontend (Vite + TS + Tailwind + Recharts)
+├── app/main.py           # Legacy Streamlit app (still deployed)
+├── models/               # Artifacts: model, columns, metrics, centroids
+├── data/                 # Raw + processed data, MRT coords, trends
+├── src/                  # Data-fetch scripts + deprecated shims
+├── tests/                # 32 tests incl. legacy-parity suite
+└── .github/workflows/    # ci.yml (lint+test) · retrain.yml (monthly, test-gated)
 ```
 
 ---
 
-## Run Locally
+## Run locally
 
 ```bash
-git clone https://github.com/bryan2804/hdb-avm.git
-cd hdb-avm
-pip install -r requirements.txt
-streamlit run app/main.py
+git clone https://github.com/bryan2804/hdb-avm.git && cd hdb-avm
+make install          # pip install -e ".[api,dev]"
+make dev-api          # FastAPI on :8000 (docs at /docs)
+make dev-web          # React on :5173, proxies /api to :8000
+make test             # ruff + 32 tests
 ```
+
+Or the API via Docker: `docker build -t hdb-avm . && docker run -p 8000:8000 hdb-avm`
+
+**Data:** data.gov.sg HDB resale prices (Jan 2017 – Jun 2026) · **Geocoding:** OneMap API
