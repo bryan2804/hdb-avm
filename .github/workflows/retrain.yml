@@ -19,27 +19,28 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -e ".[train]"
 
       - name: Fetch latest HDB data
         run: python3 src/fetch_data.py
 
-      - name: Rebuild features with lat/lon
-        run: python3 src/features_v2.py
+      - name: Rebuild features
+        run: python3 -m hdb_avm.features.pipeline
 
-      - name: Retrain model
-        run: python3 src/train_v2.py
+      - name: Retrain model and compute metrics
+        run: python3 -m hdb_avm.training.train
 
-      - name: Update app RMSE numbers
-        run: python3 src/update_rmse.py
+      - name: Run test suite against new artifacts
+        run: |
+          pip install -e ".[api,dev]"
+          python3 -m pytest tests/
 
       - name: Commit updated models and data
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add models/xgboost.joblib models/linear_regression.joblib
-          git add models/feature_columns.json
+          git add models/feature_columns.json models/metrics.json models/town_centroids.json
           git add data/resale-flat-prices.csv data/processed_v2.csv
-          git add app/main.py
           git diff --staged --quiet || git commit -m "chore: monthly retrain $(date +'%Y-%m')"
           git push

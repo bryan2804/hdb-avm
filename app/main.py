@@ -52,35 +52,19 @@ TOWNS = [
     "TOA PAYOH","WOODLANDS","YISHUN",
 ]
 FLAT_TYPES = ["2 ROOM","3 ROOM","4 ROOM","5 ROOM","EXECUTIVE","MULTI-GENERATION"]
-TOWN_RMSE = {
-    "CHOA CHU KANG":25850,
-    "JURONG WEST":27064,
-    "BUKIT BATOK":27236,
-    "SEMBAWANG":27291,
-    "WOODLANDS":28791,
-    "YISHUN":30311,
-    "JURONG EAST":30635,
-    "PUNGGOL":34446,
-    "BUKIT PANJANG":35608,
-    "PASIR RIS":36010,
-    "SENGKANG":36088,
-    "TAMPINES":36298,
-    "HOUGANG":36393,
-    "ANG MO KIO":39956,
-    "BEDOK":39959,
-    "TOA PAYOH":45540,
-    "SERANGOON":45768,
-    "GEYLANG":47448,
-    "KALLANG/WHAMPOA":49514,
-    "CLEMENTI":49966,
-    "BUKIT TIMAH":50343,
-    "BUKIT MERAH":53977,
-    "MARINE PARADE":54253,
-    "CENTRAL AREA":58720,
-    "BISHAN":59406,
-    "QUEENSTOWN":62507,
-}
-DEFAULT_RMSE = 38295
+
+
+@st.cache_data
+def load_metrics():
+    """Model metrics are a training artifact (models/metrics.json), written by
+    the retrain pipeline — no more hardcoded values that go stale."""
+    with open("models/metrics.json") as f:
+        return json.load(f)
+
+
+metrics = load_metrics()
+TOWN_RMSE = metrics["town_rmse"]
+DEFAULT_RMSE = metrics["default_rmse"]
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -390,26 +374,8 @@ with tab5:
 # ── TAB 6: Model Performance ──────────────────────────────────────────────────
 with tab6:
     st.subheader("Model Performance by Town")
-    worst_t = {
-        "QUEENSTOWN":62507,
-        "BISHAN":59406,
-        "CENTRAL AREA":58720,
-        "MARINE PARADE":54253,
-        "BUKIT MERAH":53977,
-        "BUKIT TIMAH":50343,
-        "CLEMENTI":49966,
-        "KALLANG/WHAMPOA":49514,
-    }
-    best_t = {
-        "CHOA CHU KANG":25850,
-        "JURONG WEST":27064,
-        "BUKIT BATOK":27236,
-        "SEMBAWANG":27291,
-        "WOODLANDS":28791,
-        "YISHUN":30311,
-        "JURONG EAST":30635,
-        "PUNGGOL":34446,
-    }
+    worst_t = dict(sorted(TOWN_RMSE.items(), key=lambda x: -x[1])[:8])
+    best_t = dict(sorted(TOWN_RMSE.items(), key=lambda x: x[1])[:8])
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**Hardest to price**")
@@ -441,7 +407,11 @@ with tab7:
         "MRT distances computed via OneMap API geocoding (9,714 unique block addresses). "
         "Address Lookup tab geocodes queries live via OneMap API."
     )
-    st.write("**Baseline:** Linear Regression RMSE $87,775 | **Final model:** XGBoost RMSE $38,295 | **R²:** 0.94")
+    st.write(
+        f"**Baseline:** Linear Regression RMSE ${metrics['baseline_linear_regression']['rmse']:,} | "
+        f"**Final model:** XGBoost RMSE ${metrics['xgboost']['rmse']:,} | "
+        f"**R²:** {metrics['xgboost']['r2']}"
+    )
     st.write(
         "**Known limitation:** No Tengah transactions exist (flats still under MOP). "
         "Predictions there are unreliable extrapolations."

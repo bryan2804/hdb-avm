@@ -1,0 +1,46 @@
+{
+  "trained_at": "2026-06-29",
+  "model": "xgboost",
+  "model_sha256": "644dc2893800c48886c07936faa7db73f322315b803ef5c99c84a561ff102844",
+  "evaluation": "held-out most recent 10% of transactions (time-ordered split)",
+  "n_train": 209240,
+  "n_test": 23249,
+  "median_test_price": 630000,
+  "xgboost": {
+    "rmse": 38734,
+    "r2": 0.9661
+  },
+  "baseline_linear_regression": {
+    "rmse": 87626,
+    "r2": 0.8267
+  },
+  "default_rmse": 38734,
+  "town_rmse": {
+    "ANG MO KIO": 40123,
+    "BEDOK": 39856,
+    "BISHAN": 58240,
+    "BUKIT BATOK": 27013,
+    "BUKIT MERAH": 55549,
+    "BUKIT PANJANG": 35205,
+    "BUKIT TIMAH": 51012,
+    "CENTRAL AREA": 80880,
+    "CHOA CHU KANG": 26372,
+    "CLEMENTI": 49628,
+    "GEYLANG": 46917,
+    "HOUGANG": 36395,
+    "JURONG EAST": 31816,
+    "JURONG WEST": 27654,
+    "KALLANG/WHAMPOA": 51854,
+    "MARINE PARADE": 51304,
+    "PASIR RIS": 34757,
+    "PUNGGOL": 33704,
+    "QUEENSTOWN": 66709,
+    "SEMBAWANG": 26990,
+    "SENGKANG": 35028,
+    "SERANGOON": 45149,
+    "TAMPINES": 36450,
+    "TOA PAYOH": 46013,
+    "WOODLANDS": 28461,
+    "YISHUN": 29731
+  }
+}

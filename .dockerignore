@@ -1,0 +1,16 @@
+venv/
+.venv/
+web/node_modules/
+web/dist/
+data/processed.csv
+data/processed_v2.csv
+data/resale-flat-prices.csv
+data/block_coords.csv
+notebooks/
+.git/
+.github/
+.claude/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
