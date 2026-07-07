@@ -1,5 +1,7 @@
+from functools import partial
 from typing import Annotated
 
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException
 
 from hdb_avm.api import onemap
@@ -88,15 +90,20 @@ async def create_valuation(
         )
 
     location = await _resolve_location(req, registry)
-    valuation = service.value_flat(
-        town=req.town,
-        flat_type=req.flat_type,
-        floor_area_sqm=req.floor_area_sqm,
-        storey_mid=req.storey,
-        remaining_lease_years=req.remaining_lease_years,
-        mrt_distance_km=location.mrt_distance_km,
-        latitude=location.latitude,
-        longitude=location.longitude,
+    # Model inference is CPU-bound; run it in the threadpool so it never
+    # blocks the event loop while other requests are being handled.
+    valuation = await anyio.to_thread.run_sync(
+        partial(
+            service.value_flat,
+            town=req.town,
+            flat_type=req.flat_type,
+            floor_area_sqm=req.floor_area_sqm,
+            storey_mid=req.storey,
+            remaining_lease_years=req.remaining_lease_years,
+            mrt_distance_km=location.mrt_distance_km,
+            latitude=location.latitude,
+            longitude=location.longitude,
+        )
     )
     return ValuationResponse(
         point_estimate=round(valuation.point_estimate),
