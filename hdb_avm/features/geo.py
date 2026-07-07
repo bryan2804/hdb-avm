@@ -30,7 +30,16 @@ def load_mrt_stations(path: str | Path) -> pd.DataFrame:
     mrt.columns = [c.lower() for c in mrt.columns]
     lat_col = next(c for c in mrt.columns if "lat" in c)
     lon_col = next(c for c in mrt.columns if "lon" in c)
-    return mrt.rename(columns={lat_col: "latitude", lon_col: "longitude"})
+    mrt = mrt.rename(columns={lat_col: "latitude", lon_col: "longitude"})
+
+    # Whatever column is left holds the station name (source file calls it 'query')
+    name_col = next((c for c in mrt.columns if c not in ("latitude", "longitude")), None)
+    if name_col is not None:
+        mrt = mrt.rename(columns={name_col: "station_name"})
+        mrt["station_name"] = (
+            mrt["station_name"].str.replace(r"\s+MRT STATION$", "", regex=True, case=False)
+        )
+    return mrt
 
 
 def nearest_station(lat: float, lon: float, stations: pd.DataFrame) -> tuple[float, str]:
@@ -38,7 +47,7 @@ def nearest_station(lat: float, lon: float, stations: pd.DataFrame) -> tuple[flo
     dists = haversine_km(lat, lon, stations["latitude"].values, stations["longitude"].values)
     idx = int(np.argmin(dists))
     name_cols = [c for c in stations.columns if "name" in c.lower()]
-    name = str(stations.iloc[idx][name_cols[0]]) if name_cols else "MRT"
+    name = str(stations.iloc[idx][name_cols[0]]) if name_cols else "nearest MRT"
     return float(dists[idx]), name
 
 
