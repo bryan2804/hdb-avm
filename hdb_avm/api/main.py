@@ -1,21 +1,29 @@
 """FastAPI application factory.
 
-Model artifacts are loaded once at startup via the lifespan handler and stored on
-``app.state`` — request handlers never touch the filesystem.
+Model artifacts are loaded once at startup via the lifespan handler and stored
+on ``app.state`` — request handlers never touch the filesystem.
 """
 
 from contextlib import asynccontextmanager
 
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from hdb_avm import __version__
+from hdb_avm.api.routers import metadata, trends, valuations
 from hdb_avm.config import get_settings
+from hdb_avm.ml.registry import ModelRegistry
+from hdb_avm.ml.service import ValuationService
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Model registry is attached here in the serving layer (hdb_avm.ml).
+    settings = get_settings()
+    registry = ModelRegistry.load(settings)
+    app.state.registry = registry
+    app.state.service = ValuationService(registry)
+    app.state.trends = pd.read_csv(settings.price_trends_path)
     yield
 
 
@@ -26,7 +34,8 @@ def create_app() -> FastAPI:
         version=__version__,
         description=(
             "Automated valuation of HDB resale flats, modelled on collateral "
-            "validation tools used by bank home loan teams."
+            "validation tools used by bank home loan teams. Estimates come with "
+            "town-level confidence bands and exact TreeSHAP explanations."
         ),
         lifespan=lifespan,
     )
@@ -36,6 +45,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    app.include_router(valuations.router, prefix="/api/v1")
+    app.include_router(metadata.router, prefix="/api/v1")
+    app.include_router(trends.router, prefix="/api/v1")
 
     @app.get("/health", tags=["ops"])
     def health() -> dict:
