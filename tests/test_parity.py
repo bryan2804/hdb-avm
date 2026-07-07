@@ -5,12 +5,17 @@ Two guarantees:
    legacy ``make_input`` frame exactly, so the migration cannot have changed
    what the model sees for identical inputs.
 2. Golden predictions (artifact-pinned): known outputs of the deployed model
-   generation. These auto-skip after a retrain produces a new artifact —
-   re-record the values when that happens.
+   generation. Pinned to the SHA-256 of the model binary itself — not to
+   metrics.json metadata, which can drift from the model it claims to
+   describe (e.g. a retrain on main merging into a branch carrying metrics
+   for an older model). Auto-skips for unrecognised model artifacts —
+   re-record the values after a retrain.
 """
 
+import hashlib
 import json
 from datetime import date
+from pathlib import Path
 
 import joblib
 import pandas as pd
@@ -18,10 +23,11 @@ import pytest
 
 from hdb_avm.features.encoding import FeatureEncoder
 
-GOLDEN_TRAINED_AT = "2026-06-29"
-# Recorded from the deployed model generation (see GOLDEN_TRAINED_AT):
+MODEL_PATH = Path("models/xgboost.joblib")
+GOLDEN_MODEL_SHA256 = "644dc2893800c48886c07936faa7db73f322315b803ef5c99c84a561ff102844"
+# Recorded from the model generation above (retrained 2026-06-29 via CI):
 # BEDOK 4 ROOM, 95sqm, storey 8, lease 70.5y, MRT 0.4km, valuation 2025-06
-GOLDEN_LEGACY_TOWN_MODE = 666_902.5  # lat/lon = 0, as the Streamlit app encodes it
+GOLDEN_LEGACY_TOWN_MODE = 695_563.0625  # lat/lon = 0, as the Streamlit app encodes it
 
 
 @pytest.fixture(scope="module")
@@ -90,15 +96,27 @@ def test_encoding_matches_legacy_make_input(feature_columns, case):
     pd.testing.assert_frame_equal(new, legacy, check_dtype=False)
 
 
-def test_golden_prediction_matches_deployed_model(feature_columns):
+def test_metrics_describe_the_committed_model():
+    """The artifact contract: metrics.json must be bound to the exact model
+    binary sitting next to it. Catches model/metrics drift at merge time."""
     with open("models/metrics.json") as f:
-        trained_at = json.load(f).get("trained_at")
-    if trained_at != GOLDEN_TRAINED_AT:
+        recorded = json.load(f).get("model_sha256")
+    actual = hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest()
+    assert recorded == actual, (
+        "models/metrics.json was computed for a different xgboost.joblib — "
+        "regenerate metrics for the committed model (make retrain, or "
+        "evaluate the current artifact)."
+    )
+
+
+def test_golden_prediction_matches_deployed_model(feature_columns):
+    actual_sha = hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest()
+    if actual_sha != GOLDEN_MODEL_SHA256:
         pytest.skip(
-            f"Golden values recorded for model trained {GOLDEN_TRAINED_AT}, "
-            f"current artifact is {trained_at} — re-record after retrain."
+            f"Golden values recorded for model {GOLDEN_MODEL_SHA256[:12]}…, "
+            f"current artifact is {actual_sha[:12]}… — re-record after retrain."
         )
-    model = joblib.load("models/xgboost.joblib")
+    model = joblib.load(MODEL_PATH)
     encoder = FeatureEncoder(feature_columns)
     features = encoder.encode(
         town="BEDOK",

@@ -11,6 +11,7 @@ Methodology (unchanged from v2):
   - XGBoost: 500 trees, lr 0.05, depth 7, subsample/colsample 0.8
 """
 
+import hashlib
 import json
 from datetime import date
 from pathlib import Path
@@ -82,9 +83,19 @@ def train(processed_path: str | Path = PROCESSED, model_dir: str | Path = MODEL_
     print(f"  R²:   {xgb_r2:.4f}")
     print(f"  Improvement over baseline: ${lr_rmse - xgb_rmse:,.0f}")
 
+    print("Saving artifacts...")
+    joblib.dump(xgb, model_dir / "xgboost.joblib")
+    joblib.dump(lr, model_dir / "linear_regression.joblib")
+
     metrics = {
         "trained_at": date.today().isoformat(),
         "model": "xgboost",
+        # Binds this metrics file to the exact model binary it describes.
+        # Guards against model/metrics drift, e.g. a retrain on main merging
+        # into a branch that carries metrics for an older model.
+        "model_sha256": hashlib.sha256(
+            (model_dir / "xgboost.joblib").read_bytes()
+        ).hexdigest(),
         "evaluation": "held-out most recent 10% of transactions (time-ordered split)",
         "n_train": len(X_train),
         "n_test": len(X_test),
@@ -95,9 +106,6 @@ def train(processed_path: str | Path = PROCESSED, model_dir: str | Path = MODEL_
         "town_rmse": _per_town_rmse(test_df, y_test, xgb_pred),
     }
 
-    print("Saving artifacts...")
-    joblib.dump(xgb, model_dir / "xgboost.joblib")
-    joblib.dump(lr, model_dir / "linear_regression.joblib")
     with open(model_dir / "feature_columns.json", "w") as f:
         json.dump(feature_cols, f, indent=2)
     with open(model_dir / "metrics.json", "w") as f:

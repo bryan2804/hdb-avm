@@ -10,7 +10,7 @@ An Automated Valuation Model trained on 232,000+ HDB resale transactions, served
 
 When a bank approves a mortgage, it needs to know the flat is worth what the buyer is paying. Manual valuations are slow and expensive. Automated Valuation Models run instantly at scale — but their error rate directly determines the bank's collateral mispricing exposure.
 
-This model's $38,295 RMSE on a ~$630,000 flat means roughly 6% mispricing exposure on a typical loan. The API quantifies that exposure per valuation — at town-level granularity, because a Queenstown flat (±$62,507) is a very different risk from a Choa Chu Kang flat (±$25,850).
+This model's $38,734 RMSE on a ~$630,000 flat means roughly 6% mispricing exposure on a typical loan. The API quantifies that exposure per valuation — at town-level granularity, because a Central Area flat (±$80,880) is a very different risk from a Choa Chu Kang flat (±$26,372).
 
 ---
 
@@ -52,12 +52,12 @@ MRT distance is computed from the resolved coordinates (haversine, 160+ stations
 
 ```json
 {
-  "point_estimate": 493450,
-  "band_low": 430943, "band_high": 555957,
-  "rmse": 62507, "rmse_scope": "town",
-  "mispricing_exposure_pct": 12.7,
+  "point_estimate": 489862,
+  "band_low": 423153, "band_high": 556571,
+  "rmse": 66709, "rmse_scope": "town",
+  "mispricing_exposure_pct": 13.6,
   "resolved_location": { "coordinate_source": "town_centroid", "nearest_mrt": "Queenstown", ... },
-  "explanation": { "baseline": 517253, "contributions": [ ... ] }
+  "explanation": { "baseline": 517213, "contributions": [ ... ] }
 }
 ```
 
@@ -69,8 +69,10 @@ Also: `GET /api/v1/metadata` (valid categories + model summary), `GET /api/v1/me
 
 | Model | RMSE | R² |
 |---|---|---|
-| Linear Regression (baseline) | $87,775 | — |
-| XGBoost | **$38,295** | **0.967** |
+| Linear Regression (baseline) | $87,626 | 0.827 |
+| XGBoost | **$38,734** | **0.966** |
+
+(Figures from `models/metrics.json`, recomputed on every retrain and bound to the model binary by SHA-256.)
 
 **Training split:** time-ordered, most recent 10% of transactions held out. A random split would leak future prices into training and overstate real-world accuracy.
 
@@ -80,7 +82,7 @@ Also: `GET /api/v1/metadata` (valid categories + model summary), `GET /api/v1/me
 
 ### Why town RMSE varies
 
-The model struggles most in mature, heterogeneous estates — Queenstown (±$62,507), Bishan (±$59,406), Central Area (±$58,720) — where a 1990 ground-floor 3-room and a 2015 high-floor 5-room share a town label but price worlds apart. It performs best in newer, uniform towns like Choa Chu Kang (±$25,850) and Jurong West (±$27,064).
+The model struggles most in mature, heterogeneous estates — Central Area (±$80,880), Queenstown (±$66,709), Bishan (±$58,240) — where a 1990 ground-floor 3-room and a 2015 high-floor 5-room share a town label but price worlds apart. It performs best in newer, uniform towns like Choa Chu Kang (±$26,372) and Sembawang (±$26,990).
 
 **Known limitation:** Tengah has zero resale transactions (flats still under the Minimum Occupation Period). The API refuses to extrapolate there — unknown towns return a 422, not a guess.
 
@@ -91,7 +93,7 @@ The model struggles most in mature, heterogeneous estates — Queenstown (±$62,
 - **No training/serving skew by construction.** One `FeatureEncoder`, driven entirely by the `feature_columns.json` artifact; a parity test suite proves it reproduces the legacy app's encoding byte-for-byte, plus golden predictions pinned to the deployed model generation (auto-skipped after retrains).
 - **Test-gated retraining.** The monthly pipeline retrains, recomputes per-town metrics on the new held-out window, runs the full test suite against the fresh artifacts, and only then commits.
 - **Honest uncertainty.** Confidence bands use town-level RMSE (published only for towns with ≥30 test samples), and every valuation reports the lender's mispricing exposure.
-- 32 tests: unit (parsing, geo, encoding), serving-layer, end-to-end API (OneMap mocked — no network in CI), and legacy-parity.
+- Test suite spans unit (parsing, geo, encoding), serving-layer, end-to-end API (OneMap mocked — no network in CI), legacy-parity, and an artifact-integrity check that binds metrics.json to the exact model binary by SHA-256 — so a retrain on main can never silently merge against stale metrics.
 
 ---
 
@@ -110,7 +112,7 @@ hdb-avm/
 ├── models/               # Artifacts: model, columns, metrics, centroids
 ├── data/                 # Raw + processed data, MRT coords, trends
 ├── src/                  # Data-fetch scripts + deprecated shims
-├── tests/                # 32 tests incl. legacy-parity suite
+├── tests/                # unit, API, legacy-parity, artifact-integrity
 └── .github/workflows/    # ci.yml (lint+test) · retrain.yml (monthly, test-gated)
 ```
 
@@ -123,7 +125,7 @@ git clone https://github.com/bryan2804/hdb-avm.git && cd hdb-avm
 make install          # pip install -e ".[api,dev]"
 make dev-api          # FastAPI on :8000 (docs at /docs)
 make dev-web          # React on :5173, proxies /api to :8000
-make test             # ruff + 32 tests
+make test             # ruff + full test suite
 ```
 
 Or the API via Docker: `docker build -t hdb-avm . && docker run -p 8000:8000 hdb-avm`
