@@ -1,5 +1,14 @@
 venv/
+.venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+.env
 .DS_Store
+.Rhistory
 models/*.pkl
+node_modules/
+web/dist/
