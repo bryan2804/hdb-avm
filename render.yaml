@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: hdb-avm-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    autoDeployTrigger: commit
+    envVars:
+      # Set to the deployed frontend origin(s) once the Vercel URL is known,
+      # e.g. ["https://hdb-avm.vercel.app"]. Defaults to localhost-only in
+      # code (hdb_avm/config.py) until this is set.
+      - key: HDB_CORS_ORIGINS
+        sync: false

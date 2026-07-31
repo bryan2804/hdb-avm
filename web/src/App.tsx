@@ -25,15 +25,19 @@ function Card({ children }: { children: React.ReactNode }) {
 export default function App() {
   const [metadata, setMetadata] = useState<Metadata | null>(null);
   const [metadataError, setMetadataError] = useState<string | null>(null);
+  const [slowStart, setSlowStart] = useState(false);
   const [valuation, setValuation] = useState<ValuationResponse | null>(null);
   const [trends, setTrends] = useState<TrendsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const slowTimer = setTimeout(() => setSlowStart(true), 4000);
     getMetadata()
       .then(setMetadata)
-      .catch(() => setMetadataError("API unavailable — is the backend running?"));
+      .catch(() => setMetadataError("API unavailable — is the backend running?"))
+      .finally(() => clearTimeout(slowTimer));
+    return () => clearTimeout(slowTimer);
   }, []);
 
   const handleSubmit = async (req: ValuationRequest) => {
@@ -79,7 +83,17 @@ export default function App() {
           {metadata ? (
             <ValuationForm metadata={metadata} loading={loading} onSubmit={handleSubmit} />
           ) : (
-            !metadataError && <div className="text-sm text-slate-500">Loading model metadata…</div>
+            !metadataError && (
+              <div className="text-sm text-slate-500">
+                Loading model metadata…
+                {slowStart && (
+                  <span className="mt-1 block text-xs text-slate-600">
+                    First load can take up to a minute — the free-tier API server wakes up from
+                    sleep on the first request.
+                  </span>
+                )}
+              </div>
+            )
           )}
         </Card>
 
