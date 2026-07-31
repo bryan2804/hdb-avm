@@ -2,7 +2,7 @@
 
 An Automated Valuation Model trained on 232,000+ HDB resale transactions, served by a FastAPI backend with a React frontend. Modelled on the collateral validation tools used by bank home loan teams to sanity-check property valuations before mortgage approval.
 
-**[Live demo (Streamlit) →](https://hdb-avm-aj2yyyvwanht7ghcwpv8gs.streamlit.app/)** · FastAPI + React deployment in progress
+**[Live demo →](https://hdb-avm.vercel.app/)** · [legacy Streamlit version →](https://hdb-avm-aj2yyyvwanht7ghcwpv8gs.streamlit.app/)
 
 ---
 
