@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/format.ts","./src/main.tsx","./src/components/contributionschart.tsx","./src/components/trendschart.tsx","./src/components/valuationform.tsx","./src/components/valuationresult.tsx"],"version":"5.7.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/format.ts","./src/main.tsx","./src/townrmse.ts","./src/components/contributionschart.tsx","./src/components/trendschart.tsx","./src/components/valuationform.tsx","./src/components/valuationresult.tsx"],"version":"5.7.3"}

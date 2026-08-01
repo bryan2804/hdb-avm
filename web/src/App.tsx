@@ -3,6 +3,7 @@ import {
   ApiError,
   createValuation,
   getMetadata,
+  getMetrics,
   getTrends,
   type Metadata,
   type TrendsResponse,
@@ -25,8 +26,10 @@ function Card({ children }: { children: React.ReactNode }) {
 export default function App() {
   const [metadata, setMetadata] = useState<Metadata | null>(null);
   const [metadataError, setMetadataError] = useState<string | null>(null);
+  const [townRmse, setTownRmse] = useState<Record<string, number> | null>(null);
   const [slowStart, setSlowStart] = useState(false);
   const [valuation, setValuation] = useState<ValuationResponse | null>(null);
+  const [valuedTown, setValuedTown] = useState<string | null>(null);
   const [trends, setTrends] = useState<TrendsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +40,11 @@ export default function App() {
       .then(setMetadata)
       .catch(() => setMetadataError("API unavailable — is the backend running?"))
       .finally(() => clearTimeout(slowTimer));
+    // Secondary, non-critical: powers the per-town confidence note. If it
+    // fails, the app degrades gracefully — that note just doesn't render.
+    getMetrics()
+      .then((m) => setTownRmse(m.town_rmse))
+      .catch(() => {});
     return () => clearTimeout(slowTimer);
   }, []);
 
@@ -49,9 +57,11 @@ export default function App() {
         getTrends(req.town, req.flat_type).catch(() => null),
       ]);
       setValuation(v);
+      setValuedTown(req.town);
       setTrends(t);
     } catch (e) {
       setValuation(null);
+      setValuedTown(null);
       setTrends(null);
       setError(e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
     } finally {
@@ -106,14 +116,18 @@ export default function App() {
           {valuation ? (
             <>
               <Card>
-                <ValuationResult valuation={valuation} />
+                <ValuationResult
+                  valuation={valuation}
+                  town={valuedTown}
+                  townRmse={townRmse}
+                />
               </Card>
               <Card>
                 <ContributionsChart valuation={valuation} />
               </Card>
               {trends && (
                 <Card>
-                  <TrendsChart trends={trends} />
+                  <TrendsChart trends={trends} currentEstimate={valuation.point_estimate} />
                 </Card>
               )}
             </>

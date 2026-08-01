@@ -1,5 +1,6 @@
 import type { ValuationResponse } from "../api";
 import { sgd } from "../format";
+import { rankTownRmse, TIER_COPY, TIER_STYLE } from "../townRmse";
 
 const SOURCE_LABELS: Record<string, string> = {
   address: "block-level (geocoded address)",
@@ -7,8 +8,17 @@ const SOURCE_LABELS: Record<string, string> = {
   town_centroid: "town centroid",
 };
 
-export default function ValuationResult({ valuation }: { valuation: ValuationResponse }) {
+export default function ValuationResult({
+  valuation,
+  town,
+  townRmse,
+}: {
+  valuation: ValuationResponse;
+  town: string | null;
+  townRmse: Record<string, number> | null;
+}) {
   const loc = valuation.resolved_location;
+  const rank = town && townRmse ? rankTownRmse(townRmse, town) : null;
   return (
     <div className="space-y-4">
       <div>
@@ -31,6 +41,15 @@ export default function ValuationResult({ valuation }: { valuation: ValuationRes
         </span>{" "}
         for a mortgage lender on this flat.
       </div>
+
+      {rank && town && (
+        <div className={`rounded-lg border p-3 text-sm ${TIER_STYLE[rank.tier]}`}>
+          <span className="font-semibold">
+            {town} ranks #{rank.rank} of {rank.total} towns by pricing precision
+          </span>{" "}
+          ({rank.percentile}th percentile widest) — {TIER_COPY[rank.tier]}
+        </div>
+      )}
 
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
         <dt className="text-slate-500">Location precision</dt>

@@ -58,6 +58,11 @@ export interface TrendsResponse {
   change_pct: number | null;
 }
 
+export interface MetricsArtifact {
+  default_rmse: number;
+  town_rmse: Record<string, number>;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -95,3 +100,5 @@ export const getTrends = (town: string, flatType: string) =>
   request<TrendsResponse>(
     `/api/v1/trends?town=${encodeURIComponent(town)}&flat_type=${encodeURIComponent(flatType)}`,
   );
+
+export const getMetrics = () => request<MetricsArtifact>("/api/v1/metrics");

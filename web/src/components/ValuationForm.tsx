@@ -80,6 +80,10 @@ export default function ValuationForm({ metadata, loading, onSubmit }: Props) {
               <option key={t}>{t}</option>
             ))}
           </select>
+          <span className="mt-1 block text-xs text-slate-600">
+            Only towns with resale history are listed — e.g. Tengah has none yet, so it isn't
+            priceable.
+          </span>
         </label>
         <label className="block text-sm">
           <span className="mb-1 block text-slate-300">Flat type</span>
