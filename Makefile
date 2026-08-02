@@ -16,10 +16,14 @@ test:               ## Lint + full test suite
 lint:
 	ruff check hdb_avm tests
 
-retrain:            ## Full retraining pipeline (fetch → features → train)
+retrain:            ## Full retraining pipeline (fetch → features → train → SQL artifact)
 	python3 src/fetch_data.py
 	python3 -m hdb_avm.features.pipeline
 	python3 -m hdb_avm.training.train
+	python3 -m hdb_avm.training.build_duckdb
+
+build-duckdb:       ## Rebuild just the DuckDB analytics artifact from raw transactions
+	python3 -m hdb_avm.training.build_duckdb
 
 build-web:
 	cd web && npm run build

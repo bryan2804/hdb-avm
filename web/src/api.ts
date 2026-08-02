@@ -63,6 +63,17 @@ export interface MetricsArtifact {
   town_rmse: Record<string, number>;
 }
 
+export interface MarketMover {
+  town: string;
+  median_price: number;
+  yoy_change_pct: number;
+}
+
+export interface MarketMoversResponse {
+  flat_type: string;
+  movers: MarketMover[];
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -102,3 +113,6 @@ export const getTrends = (town: string, flatType: string) =>
   );
 
 export const getMetrics = () => request<MetricsArtifact>("/api/v1/metrics");
+
+export const getMarketMovers = (flatType: string) =>
+  request<MarketMoversResponse>(`/api/v1/market-movers?flat_type=${encodeURIComponent(flatType)}`);

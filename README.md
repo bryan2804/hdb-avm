@@ -19,22 +19,26 @@ This model's $38,734 RMSE on a ~$630,000 flat means roughly 6% mispricing exposu
 ```mermaid
 flowchart LR
     DG[data.gov.sg\n232K transactions] --> FP
+    DG --> SQL
     OM[OneMap API\nblock geocoding] --> FP
     subgraph shared [hdb_avm package — single source of truth]
         FP[features pipeline] --> TR[training]
         FP --> ENC[FeatureEncoder]
+        SQL[build_duckdb] --> DB[(DuckDB:\nresale_transactions)]
     end
     TR --> ART[(artifacts:\nmodel · feature_columns\nmetrics · town_centroids)]
     ART --> API[FastAPI service]
     ENC --> API
+    DB --> API
     API --> WEB[React frontend]
     ART --> ST[Streamlit app - legacy]
     CI[GitHub Actions\nmonthly retrain] -.->|test-gated commit| ART
+    CI -.->|test-gated commit| DB
 ```
 
 The design constraint that shaped everything: **training and serving import the same feature code** (`hdb_avm.features`), so what the model sees in production is provably what it saw in training. Parity is enforced by tests, not convention.
 
-**Artifact contract.** Training writes four artifacts: the model, the feature column order, computed evaluation metrics (including per-town RMSE on the held-out window), and town centroids. Both frontends read these artifacts — no metric or category list is hardcoded anywhere downstream. A monthly GitHub Actions run refreshes the data, retrains, and only commits new artifacts if the full test suite passes against them.
+**Artifact contract.** Training writes the model, the feature column order, computed evaluation metrics (including per-town RMSE on the held-out window), and town centroids. A separate offline step loads the raw transactions into `models/hdb_avm.duckdb` — a queryable SQL artifact, not a precomputed CSV — so trend and market-comparison endpoints run live aggregate/window-function queries instead of reading a stale file. No metric, category list, or aggregation result is hardcoded anywhere downstream. A monthly GitHub Actions run refreshes the data, retrains, rebuilds the SQL artifact, and only commits if the full test suite passes against the fresh artifacts.
 
 ---
 
@@ -61,7 +65,7 @@ MRT distance is computed from the resolved coordinates (haversine, 160+ stations
 }
 ```
 
-Also: `GET /api/v1/metadata` (valid categories + model summary), `GET /api/v1/metrics` (full evaluation artifact), `GET /api/v1/trends` (quarterly medians), `GET /health`. Interactive docs at `/docs`.
+Also: `GET /api/v1/metadata` (valid categories + model summary), `GET /api/v1/metrics` (full evaluation artifact), `GET /api/v1/trends` (quarterly medians, live SQL `GROUP BY` over `resale_transactions`), `GET /api/v1/market-movers` (towns ranked by year-over-year price change, via a `LAG` window-function query — framed as lender risk: appreciating vs. depreciating collateral), `GET /health`. Interactive docs at `/docs`.
 
 ---
 
@@ -91,7 +95,8 @@ The model struggles most in mature, heterogeneous estates — Central Area (±$8
 ## Engineering notes
 
 - **No training/serving skew by construction.** One `FeatureEncoder`, driven entirely by the `feature_columns.json` artifact; a parity test suite proves it reproduces the legacy app's encoding byte-for-byte, plus golden predictions pinned to the deployed model generation (auto-skipped after retrains).
-- **Test-gated retraining.** The monthly pipeline retrains, recomputes per-town metrics on the new held-out window, runs the full test suite against the fresh artifacts, and only then commits.
+- **SQL analytics layer.** `hdb_avm/db.py` opens a single read-only DuckDB connection at startup (embedded — no separate database service to run); each request gets its own cheap cursor, since concurrent reads need no locking. Trend and market-comparison endpoints run real queries — `GROUP BY`, `LAG` window functions, CTEs — against 233K raw transactions, not a cached CSV.
+- **Test-gated retraining.** The monthly pipeline retrains, recomputes per-town metrics on the new held-out window, rebuilds the DuckDB artifact, runs the full test suite against the fresh artifacts, and only then commits.
 - **Honest uncertainty.** Confidence bands use town-level RMSE (published only for towns with ≥30 test samples), and every valuation reports the lender's mispricing exposure.
 - Test suite spans unit (parsing, geo, encoding), serving-layer, end-to-end API (OneMap mocked — no network in CI), legacy-parity, and an artifact-integrity check that binds metrics.json to the exact model binary by SHA-256 — so a retrain on main can never silently merge against stale metrics.
 
@@ -104,15 +109,16 @@ hdb-avm/
 ├── hdb_avm/              # Shared Python package
 │   ├── features/         #   parsing, geo, encoding, training pipeline
 │   ├── ml/               #   model registry + valuation service
-│   ├── training/         #   train + compute metrics artifacts
+│   ├── training/         #   train + compute metrics artifacts + build_duckdb
 │   ├── api/              #   FastAPI app, routers, schemas, OneMap client
+│   ├── db.py             #   DuckDB connection (SQL analytics layer)
 │   └── config.py         #   env-overridable settings (HDB_*)
 ├── web/                  # React frontend (Vite + TS + Tailwind + Recharts)
 ├── app/main.py           # Legacy Streamlit app (still deployed)
-├── models/               # Artifacts: model, columns, metrics, centroids
-├── data/                 # Raw + processed data, MRT coords, trends
+├── models/               # Artifacts: model, columns, metrics, centroids, hdb_avm.duckdb
+├── data/                 # Raw + processed data, MRT coords
 ├── src/                  # Data-fetch scripts + deprecated shims
-├── tests/                # unit, API, legacy-parity, artifact-integrity
+├── tests/                # unit, API, legacy-parity, artifact-integrity, SQL layer
 └── .github/workflows/    # ci.yml (lint+test) · retrain.yml (monthly, test-gated)
 ```
 

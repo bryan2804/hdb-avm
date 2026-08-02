@@ -80,6 +80,17 @@ class TrendsResponse(BaseModel):
     )
 
 
+class MarketMover(BaseModel):
+    town: str
+    median_price: float
+    yoy_change_pct: float = Field(description="Year-over-year median price change")
+
+
+class MarketMoversResponse(BaseModel):
+    flat_type: str
+    movers: list[MarketMover]
+
+
 class Metadata(BaseModel):
     towns: list[str]
     flat_types: list[str]

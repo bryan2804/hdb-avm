@@ -124,3 +124,16 @@ def test_trends_happy_path(client):
 def test_trends_unknown_combination_is_404(client):
     resp = client.get("/api/v1/trends", params={"town": "BEDOK", "flat_type": "MULTI-GENERATION"})
     assert resp.status_code == 404
+
+
+def test_market_movers_happy_path(client):
+    resp = client.get("/api/v1/market-movers", params={"flat_type": "4 room"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["flat_type"] == "4 ROOM"
+    assert len(body["movers"]) > 10
+    towns = {m["town"] for m in body["movers"]}
+    assert "BEDOK" in towns
+    # Ranked descending by YoY change
+    changes = [m["yoy_change_pct"] for m in body["movers"]]
+    assert changes == sorted(changes, reverse=True)

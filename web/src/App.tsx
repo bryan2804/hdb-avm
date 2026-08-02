@@ -2,15 +2,18 @@ import { useEffect, useState } from "react";
 import {
   ApiError,
   createValuation,
+  getMarketMovers,
   getMetadata,
   getMetrics,
   getTrends,
+  type MarketMoversResponse,
   type Metadata,
   type TrendsResponse,
   type ValuationRequest,
   type ValuationResponse,
 } from "./api";
 import ContributionsChart from "./components/ContributionsChart";
+import MarketMovers from "./components/MarketMovers";
 import TrendsChart from "./components/TrendsChart";
 import ValuationForm from "./components/ValuationForm";
 import ValuationResult from "./components/ValuationResult";
@@ -31,6 +34,7 @@ export default function App() {
   const [valuation, setValuation] = useState<ValuationResponse | null>(null);
   const [valuedTown, setValuedTown] = useState<string | null>(null);
   const [trends, setTrends] = useState<TrendsResponse | null>(null);
+  const [marketMovers, setMarketMovers] = useState<MarketMoversResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,17 +56,20 @@ export default function App() {
     setLoading(true);
     setError(null);
     try {
-      const [v, t] = await Promise.all([
+      const [v, t, mm] = await Promise.all([
         createValuation(req),
         getTrends(req.town, req.flat_type).catch(() => null),
+        getMarketMovers(req.flat_type).catch(() => null),
       ]);
       setValuation(v);
       setValuedTown(req.town);
       setTrends(t);
+      setMarketMovers(mm);
     } catch (e) {
       setValuation(null);
       setValuedTown(null);
       setTrends(null);
+      setMarketMovers(null);
       setError(e instanceof ApiError ? e.message : "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -128,6 +135,11 @@ export default function App() {
               {trends && (
                 <Card>
                   <TrendsChart trends={trends} currentEstimate={valuation.point_estimate} />
+                </Card>
+              )}
+              {marketMovers && (
+                <Card>
+                  <MarketMovers data={marketMovers} />
                 </Card>
               )}
             </>

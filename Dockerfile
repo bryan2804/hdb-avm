@@ -8,9 +8,11 @@ COPY pyproject.toml ./
 COPY hdb_avm ./hdb_avm
 RUN pip install --no-cache-dir ".[api]"
 
-# Only the artifacts serving needs — not the 65 MB training dataset
+# Only the artifacts serving needs — not the 65 MB training dataset.
+# models/hdb_avm.duckdb (the SQL analytics artifact) rides along with the
+# rest of models/ — it's built offline by hdb_avm.training.build_duckdb.
 COPY models ./models
-COPY data/mrt_station_coords.csv data/price_trends.csv ./data/
+COPY data/mrt_station_coords.csv ./data/
 
 ENV HDB_MODEL_DIR=/app/models \
     HDB_DATA_DIR=/app/data

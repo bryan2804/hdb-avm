@@ -44,8 +44,8 @@ class Settings(BaseSettings):
         return self.data_dir / "mrt_station_coords.csv"
 
     @property
-    def price_trends_path(self) -> Path:
-        return self.data_dir / "price_trends.csv"
+    def duckdb_path(self) -> Path:
+        return self.model_dir / "hdb_avm.duckdb"
 
 
 @lru_cache
